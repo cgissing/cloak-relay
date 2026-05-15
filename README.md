@@ -1,288 +1,91 @@
 # Cloak Relay
 
-Cloak Relay is a local Browser Relay-like service for agents. It exposes an HTTP API and an MCP stdio bridge, but the actual browser is launched through CloakBrowser persistent contexts instead of a Chrome extension.
+Cloak Relay gives agents a local browser control layer backed by
+CloakBrowser.
 
-This is an independent relay service. It depends on CloakBrowser at runtime but does not redistribute the CloakBrowser Chromium binary.
+It runs a localhost HTTP service and an MCP stdio bridge. Agents can open a
+session, navigate, read page snapshots, click, type, scroll, take screenshots,
+and keep login state in persistent profiles. When a page needs user input, the
+same profile can be reopened in a visible CloakBrowser window and then handed
+back to the agent.
 
-The intended flow is:
+## Install On Linux Or WSL
 
-1. Start the local HTTP service in the background.
-2. Register the MCP bridge with an agent.
-3. Let the agent navigate, click, type, scroll, and inspect pages through the MCP tools.
-4. When login, 2FA, or human verification is needed, reopen the same session in a visible CloakBrowser window, let the user complete the step, then let the agent continue.
-
-This project does not automate verification bypass.
-
-## Install
-
-From this directory:
-
-Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -U pip
-.\.venv\Scripts\python -m pip install -e ".[dev,cloak]"
-```
-
-Linux or WSL:
+Install with `pipx`:
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install -U pip
-./.venv/bin/python -m pip install -e ".[dev,cloak]"
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+pipx install git+https://github.com/cgissing/cloak-relay.git
 ```
 
-CloakBrowser downloads its own Chromium binary. You do not need `playwright install chromium`.
-
-To pre-download the CloakBrowser binary:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloakbrowser install
-```
-
-Linux or WSL:
+Start the relay:
 
 ```bash
-./.venv/bin/python -m cloakbrowser install
+cloak-relay start
+cloak-relay status
+curl http://127.0.0.1:18796/health
 ```
 
-## Run In Foreground
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli serve
-```
-
-Linux or WSL:
+Stop it:
 
 ```bash
-./.venv/bin/python -m cloak_relay.cli serve
+cloak-relay stop
 ```
 
-Default URL:
+The service listens on:
 
 ```text
 http://127.0.0.1:18796
 ```
 
-Health check:
-
-Windows PowerShell:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/health
-```
-
-Linux or WSL:
-
-```bash
-curl http://127.0.0.1:18796/health
-```
-
-## Run In Background
-
-Start:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli start
-```
-
-Linux or WSL:
-
-```bash
-./.venv/bin/python -m cloak_relay.cli start
-```
-
-Status:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli status
-```
-
-Linux or WSL:
-
-```bash
-./.venv/bin/python -m cloak_relay.cli status
-```
-
-Stop:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli stop
-```
-
-Linux or WSL:
-
-```bash
-./.venv/bin/python -m cloak_relay.cli stop
-```
-
-Logs:
+Runtime data lives under:
 
 ```text
-~/.local/share/cloak-relay/logs/cloak-relay.log
+~/.local/share/cloak-relay
 ```
 
-PID file:
+Profiles are stored under:
 
 ```text
-~/.local/share/cloak-relay/cloak-relay.pid
+~/.local/share/cloak-relay/profiles/<sessionId>
 ```
 
-## Install Background Startup
+## Run At Login
 
-On Windows, install a user-level Task Scheduler entry that starts Cloak Relay at logon:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli install-service --start-now
-```
-
-On Linux, install a user-level systemd service:
+On Linux, or WSL with systemd enabled:
 
 ```bash
-./.venv/bin/python -m cloak_relay.cli install-service --start-now
+cloak-relay install-service --start-now
 ```
 
-On WSL, the same command works when WSL systemd is enabled. If `systemctl --user` is not available, use the PID-based background runner:
-
-```bash
-./.venv/bin/python -m cloak_relay.cli start
-```
-
-The Linux/WSL systemd unit is written to:
+This writes a user systemd unit to:
 
 ```text
 ~/.config/systemd/user/cloak-relay.service
 ```
 
-Aliases:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli enable --start-now
-.\.venv\Scripts\python -m cloak_relay.cli disable
-```
-
-Linux or WSL with systemd:
+If `systemctl --user` is not available, use the normal background runner:
 
 ```bash
-./.venv/bin/python -m cloak_relay.cli enable --start-now
-./.venv/bin/python -m cloak_relay.cli disable
+cloak-relay start
 ```
 
-Uninstall:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m cloak_relay.cli uninstall-service
-```
-
-Linux or WSL with systemd:
+Remove the service:
 
 ```bash
-./.venv/bin/python -m cloak_relay.cli uninstall-service
+cloak-relay uninstall-service
 ```
 
-The service uses the current Python executable, so create it from the `.venv` you want agents to use.
+## MCP Setup
 
-## HTTP API
-
-Start or reuse a normal headless humanized session:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/api/session/start `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"sessionId":"default","headless":true,"humanize":true}'
-```
-
-CloakBrowser itself defaults to `headless=true`. Cloak Relay also defaults to `headless=true`. Use `headless=false` only when the task clearly needs user involvement from the start, or when a headless run gets blocked by login, 2FA, or verification.
-
-Reopen the same profile in a visible window for user handoff:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/api/session/close `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"sessionId":"default"}'
-
-Invoke-RestMethod http://127.0.0.1:18796/api/session/start `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"sessionId":"default","headless":false,"humanize":true}'
-```
-
-Navigate:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/api/navigate `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"url":"https://example.com"}'
-```
-
-Snapshot:
-
-```powershell
-Invoke-RestMethod "http://127.0.0.1:18796/api/snapshot?format=text"
-```
-
-Click:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/api/click `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"selector":"button[type=submit]"}'
-```
-
-Type:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/api/type `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"selector":"input[name=q]","text":"hello","clear":true,"submit":true}'
-```
-
-Clear login state for the default session:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18796/api/session/clear `
-  -Method Post `
-  -ContentType application/json `
-  -Body '{"sessionId":"default"}'
-```
-
-## MCP Registration
-
-The MCP process is not the browser service. Keep the HTTP service running in the background, then point the agent to the stdio bridge.
-
-Example MCP config shape:
-
-Windows:
+Keep the HTTP service running, then point your agent to the MCP command:
 
 ```json
 {
   "mcpServers": {
     "cloak-relay-mcp": {
-      "command": "C:\\path\\to\\cloak-relay\\.venv\\Scripts\\python.exe",
-      "args": [
-        "-m",
-        "cloak_relay.mcp_server"
-      ],
+      "command": "/home/you/.local/bin/cloak-relay-mcp",
       "env": {
         "CLOAK_RELAY_URL": "http://127.0.0.1:18796"
       }
@@ -291,26 +94,7 @@ Windows:
 }
 ```
 
-Linux or WSL:
-
-```json
-{
-  "mcpServers": {
-    "cloak-relay-mcp": {
-      "command": "/home/you/path/to/cloak-relay/.venv/bin/python",
-      "args": [
-        "-m",
-        "cloak_relay.mcp_server"
-      ],
-      "env": {
-        "CLOAK_RELAY_URL": "http://127.0.0.1:18796"
-      }
-    }
-  }
-}
-```
-
-Available MCP tools:
+Available tools:
 
 - `browser_health`
 - `browser_tabs`
@@ -325,69 +109,131 @@ Available MCP tools:
 - `browser_screenshot`
 - `browser_eval`
 
+## Typical Agent Flow
+
+Start a normal headless session:
+
+```bash
+curl -s -X POST http://127.0.0.1:18796/api/session/start \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default","headless":true,"humanize":true}'
+```
+
+Navigate:
+
+```bash
+curl -s -X POST http://127.0.0.1:18796/api/navigate \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default","url":"https://example.com"}'
+```
+
+Read the page:
+
+```bash
+curl -s 'http://127.0.0.1:18796/api/snapshot?sessionId=default&format=text'
+```
+
+Click and type:
+
+```bash
+curl -s -X POST http://127.0.0.1:18796/api/click \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default","selector":"button[type=submit]"}'
+
+curl -s -X POST http://127.0.0.1:18796/api/type \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default","selector":"input[name=q]","text":"hello","clear":true}'
+```
+
+## User Handoff
+
+`headless:true` is the default. Use a visible window only when the task needs
+the user, or when a headless run gets stuck.
+
+Reopen the same session visibly:
+
+```bash
+curl -s -X POST http://127.0.0.1:18796/api/session/close \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default"}'
+
+curl -s -X POST http://127.0.0.1:18796/api/session/start \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default","headless":false,"humanize":true}'
+```
+
+After the user finishes in the browser window, the agent continues with the
+same `sessionId`.
+
+## Login State
+
+Close the browser and keep login state:
+
+```bash
+curl -s -X POST http://127.0.0.1:18796/api/session/close \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default"}'
+```
+
+Delete the managed profile:
+
+```bash
+curl -s -X POST http://127.0.0.1:18796/api/session/clear \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"default"}'
+```
+
 ## Agent Skill
 
-This repo includes a lightweight agent skill:
+The repo includes a small Codex skill:
 
 ```text
 skills/cloak-relay-agent/SKILL.md
 ```
 
-Use it when an agent needs a short operating guide for Cloak Relay: check health, start a headless session, navigate, snapshot, click, type, scroll, screenshot, and reopen the same session visibly only when user handoff is needed.
-
-Install it into a Codex skills directory by copying the folder:
-
-Windows PowerShell:
-
-```powershell
-Copy-Item -Recurse -Force `
-  .\skills\cloak-relay-agent `
-  "$env:USERPROFILE\.codex\skills\cloak-relay-agent"
-```
-
-Linux or WSL:
+Install it:
 
 ```bash
 mkdir -p ~/.codex/skills
 cp -r ./skills/cloak-relay-agent ~/.codex/skills/
 ```
 
-The skill is intentionally small. It does not add a large policy layer; it mainly tells the agent how to use the relay and when to reopen a visible browser window for user help.
-
-## Profiles And Login State
-
-Profiles live under:
-
-```text
-~/.local/share/cloak-relay/profiles/<sessionId>
-```
-
-The default session stores cookies, localStorage, cache, and other persistent browser state in:
-
-```text
-~/.local/share/cloak-relay/profiles/default
-```
-
-Use `browser_close_session` or `/api/session/close` to close the browser while keeping login state. Use `browser_clear_session` or `/api/session/clear` to delete the managed profile.
+The skill is only an operating guide for agents. It explains the relay URL,
+the MCP tools, the default headless session, profile reuse, and the visible
+handoff path.
 
 ## Development
 
-Run unit tests:
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python -m pytest -v
-```
-
-Linux or WSL:
+Clone and run tests:
 
 ```bash
-./.venv/bin/python -m pytest -v
+git clone https://github.com/cgissing/cloak-relay.git
+cd cloak-relay
+python3 -m venv .venv
+./.venv/bin/python -m pip install -U pip
+./.venv/bin/python -m pip install -e ".[dev]"
+./.venv/bin/python -m pytest -q
 ```
 
-The default test suite does not launch or download CloakBrowser. Real browser smoke tests should be gated behind an explicit environment variable before being added.
+Run from source:
+
+```bash
+./.venv/bin/python -m cloak_relay.cli start
+```
+
+Windows is supported by the CLI, but this README keeps the main path focused
+on Linux and WSL.
 
 ## License
 
-This project is released under the MIT License. CloakBrowser wrapper code is MIT licensed, but the compiled CloakBrowser Chromium binary is governed by CloakHQ's separate binary license and is downloaded from official CloakBrowser distribution channels at runtime.
+Cloak Relay is released under the MIT License.
+
+The relay code is open source in this repository. CloakBrowser is an upstream
+runtime dependency and its browser binary is downloaded through CloakBrowser's
+own distribution channel.
+
+## Acknowledgements
+
+This project recognizes and links to the LINUX DO community:
+
+https://linux.do

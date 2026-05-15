@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
     "aiohttp>=3.9",
+    "cloakbrowser>=0.3.28",
 ]
 
 [project.optional-dependencies]
@@ -17,10 +18,6 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
 ]
-cloak = [
-    "cloakbrowser",
-]
-
 [project.scripts]
 cloak-relay = "cloak_relay.cli:main"
 cloak-relay-mcp = "cloak_relay.mcp_server:main"
