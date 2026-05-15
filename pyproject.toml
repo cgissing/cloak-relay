@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloak-relay"
+version = "0.1.0"
+description = "Local Browser Relay-like HTTP and MCP bridge backed by CloakBrowser."
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+cloak = [
+    "cloakbrowser",
+]
+
+[project.scripts]
+cloak-relay = "cloak_relay.cli:main"
+cloak-relay-mcp = "cloak_relay.mcp_server:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cloak_relay*"]
